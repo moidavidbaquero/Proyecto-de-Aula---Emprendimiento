@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>EquilibraDB — Balanceador Numérico de Carga</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #0a0e1a;
+    --bg2:       #111827;
+    --bg3:       #1a2235;
+    --border:    #1e2d45;
+    --accent:    #00e5a0;
+    --accent2:   #7c6cfa;
+    --accent3:   #f97316;
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+    --card:      #0f1929;
+    --danger:    #ef4444;
+    --success:   #10b981;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 0 24px 60px; }
+
+  /* HEADER */
+  header {
+    padding: 32px 0 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .logo-mark {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 16px; font-weight: 700;
+    color: #000; flex-shrink: 0;
+  }
+
+  .header-text h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+
+  .header-text p {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+
+  .badge-row { margin-left: auto; display: flex; gap: 8px; }
+  .badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px; padding: 4px 10px;
+    border-radius: 4px; font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .badge-n { background: rgba(124,108,250,0.15); color: var(--accent2); border: 1px solid rgba(124,108,250,0.3); }
+  .badge-m { background: rgba(0,229,160,0.1); color: var(--accent); border: 1px solid rgba(0,229,160,0.25); }
+
+  /* TABS */
+  .tabs {
+    display: flex; gap: 0;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 28px;
+    width: fit-content;
+  }
+
+  .tab {
+    padding: 8px 20px;
+    border-radius: 7px;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all .2s;
+    border: none; background: transparent;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .tab.active {
+    background: var(--bg3);
+    color: var(--text);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+
+  .tab:hover:not(.active) { color: var(--text); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* GRID */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+
+  /* CARD */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .card-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .card-title span {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+
+  .card-title span.purple { background: var(--accent2); }
+
+  /* FORM */
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 5px;
+    font-weight: 500;
+  }
+
+  input[type=number], input[type=text], select, textarea {
+    width: 100%;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: 'Space Mono', monospace;
+    outline: none;
+    transition: border-color .2s;
+    margin-bottom: 14px;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,229,160,0.08);
+  }
+
+  textarea { resize: vertical; min-height: 100px; }
+
+  .input-note {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: -10px;
+    margin-bottom: 14px;
+  }
+
+  /* BUTTON */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 22px;
+    border-radius: 8px;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all .2s;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+  }
+  .btn-primary:hover { background: #00ffb0; transform: translateY(-1px); }
+
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-purple {
+    background: var(--accent2);
+    color: #fff;
+  }
+  .btn-purple:hover { background: #9585ff; transform: translateY(-1px); }
+
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+
+  /* STAT CARDS */
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-bottom: 6px;
+    font-family: 'Space Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .stat-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .stat-value.purple { color: var(--accent2); }
+  .stat-value.orange { color: var(--accent3); }
+  .stat-value.muted { color: var(--muted); font-size: 16px; }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* RESULT BOX */
+  .result-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
+    display: none;
+  }
+
+  .result-box.show { display: block; }
+
+  .result-box.success { border-color: rgba(0,229,160,0.4); background: rgba(0,229,160,0.04); }
+  .result-box.warning { border-color: rgba(249,115,22,0.4); background: rgba(249,115,22,0.04); }
+  .result-box.error   { border-color: rgba(239,68,68,0.4);  background: rgba(239,68,68,0.04);  }
+
+  .result-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px; font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .result-box.success .result-title { color: var(--accent); }
+  .result-box.warning .result-title { color: var(--accent3); }
+  .result-box.error   .result-title { color: var(--danger); }
+
+  .result-body { font-size: 13px; color: var(--text); line-height: 1.7; }
+
+  /* ITERATION TABLE */
+  .iter-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-top: 20px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+  }
+
+  th {
+    background: var(--bg3);
+    color: var(--muted);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 10px;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    color: var(--text);
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  tr.converge td { color: var(--accent); }
+  tr.converge td:first-child::after {
+    content: ' ✓';
+    color: var(--accent);
+  }
+
+  .complex-root { color: var(--accent2); }
+  .real-root    { color: var(--accent);  }
+
+  /* CHART */
+  .chart-wrap {
+    position: relative;
+    height: 280px;
+    margin-top: 16px;
+  }
+
+  /* COMPARE SECTION */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 20px;
+  }
+
+  .method-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .method-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+
+  .method-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px; font-weight: 700;
+    color: var(--text);
+  }
+
+  /* INFO BOXES */
+  .info-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent2);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .info-box strong { color: var(--text); }
+
+  .info-box.green { border-left-color: var(--accent); }
+
+  /* PROGRESS BAR */
+  .progress-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .progress-label { font-size: 12px; color: var(--muted); min-width: 120px; }
+
+  .progress-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: var(--bg3);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width .6s ease;
+  }
+
+  .progress-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    min-width: 60px;
+    text-align: right;
+  }
+
+  /* SECTION DIVIDER */
+  .section-sep {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 24px 0;
+  }
+
+  /* FOOTER */
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 12px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  @media (max-width: 768px) {
+    .grid-2, .grid-3, .compare-grid { grid-template-columns: 1fr; }
+    .badge-row { display: none; }
+    header { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo-mark">EQ</div>
+    <div class="header-text">
+      <h1>EquilibraDB</h1>
+      <p>Balanceador numérico de carga en bases de datos · Métodos Numéricos — Ingeniería de Software</p>
+    </div>
+    <div class="badge-row">
+      <span class="badge badge-n">Newton-Raphson</span>
+      <span class="badge badge-m">Müller</span>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('newton')">① Newton-Raphson</button>
+    <button class="tab" onclick="showTab('muller')">② Müller</button>
+    <button class="tab" onclick="showTab('compare')">③ Comparativa</button>
+    <button class="tab" onclick="showTab('teoria')">④ Teoría</button>
+  </div>
+
+  <!-- ===================== PANEL NEWTON ===================== -->
+  <div id="panel-newton" class="panel active">
+
+    <div class="info-box green">
+      <strong>¿Qué hace este módulo?</strong> Aplica Newton-Raphson para encontrar el punto de saturación <em>q*</em>:
+      el número exacto de consultas concurrentes donde el tiempo de respuesta de tu base de datos supera el umbral aceptable (SLA).
+      f(q) = T(q) − T_max. La raíz f(q*) = 0 es el límite de carga.
+    </div>
+
+    <div class="grid-2">
+      <!-- INPUTS -->
+      <div class="card">
+        <div class="card-title"><span class="purple"></span>Parámetros del método</div>
+
+        <label>Punto inicial x₀ (consultas concurrentes)</label>
+        <input type="number" id="n-x0" value="50" step="1"/>
+
+        <label>Tolerancia ε (error relativo mínimo)</label>
+        <input type="number" id="n-tol" value="0.0001" step="0.00001"/>
+
+        <label>Máximo de iteraciones</label>
+        <input type="number" id="n-maxiter" value="50" step="1"/>
+
+        <label>Paso h para derivada numérica</label>
+        <input type="number" id="n-h" value="0.001" step="0.0001"/>
+
+        <hr class="section-sep"/>
+
+        <div class="card-title"><span></span>Datos de rendimiento</div>
+
+        <label>Tiempo límite aceptable T_max (ms)</label>
+        <input type="number" id="n-tmax" value="200" step="1"/>
+
+        <label>Datos CSV: consultas, tiempo_ms (una fila por línea)</label>
+        <textarea id="n-data" placeholder="10, 45&#10;20, 62&#10;30, 85&#10;40, 115&#10;50, 158&#10;60, 220&#10;70, 310&#10;80, 450&#10;90, 680&#10;100, 990">10, 45
+20, 62
+30, 85
+40, 115
+50, 158
+60, 220
+70, 310
+80, 450
+90, 680
+100, 990</textarea>
+        <p class="input-note">Formato: consultas_concurrentes, tiempo_respuesta_ms</p>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="runNewton()">▶ Ejecutar Newton</button>
+          <button class="btn btn-secondary" onclick="loadSampleNewton()">Cargar ejemplo</button>
+        </div>
+      </div>
+
+      <!-- RESULTS -->
+      <div>
+        <div id="n-result-box" class="result-box">
+          <div class="result-title" id="n-result-title"></div>
+          <div class="result-body" id="n-result-body"></div>
+        </div>
+
+        <div class="grid-3" id="n-stats" style="display:none">
+          <div class="stat-card">
+            <div class="stat-label">Raíz q*</div>
+            <div class="stat-value" id="ns-root">—</div>
+            <div class="stat-sub">consultas concurrentes</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Iteraciones</div>
+            <div class="stat-value purple" id="ns-iters">—</div>
+            <div class="stat-sub">hasta convergencia</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Error final</div>
+            <div class="stat-value orange" id="ns-err">—</div>
+            <div class="stat-sub">error relativo</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:0">
+          <div class="card-title"><span></span>Gráfica f(q) y convergencia</div>
+          <div class="chart-wrap">
+            <canvas id="chart-newton"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ITERATION TABLE -->
+    <div class="iter-wrap" id="n-table-wrap" style="display:none">
+      <table>
+        <thead>
+          <tr>
+            <th>Iter</th>
+            <th>xₙ</th>
+            <th>f(xₙ)</th>
+            <th>f'(xₙ)</th>
+            <th>xₙ₊₁</th>
+            <th>Error rel.</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="n-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===================== PANEL MÜLLER ===================== -->
+  <div id="panel-muller" class="panel">
+
+    <div class="info-box">
+      <strong>¿Qué hace este módulo?</strong> Aplica el método de Müller sobre la <em>variación del tiempo de respuesta</em>
+      a lo largo de las versiones/intervalos de tiempo, g(t) = ΔT(t). Encuentra raíces incluyendo <strong>raíces complejas</strong>,
+      que indican oscilaciones inestables en el sistema de base de datos. No requiere derivada analítica.
+    </div>
+
+    <div class="grid-2">
+      <!-- INPUTS -->
+      <div class="card">
+        <div class="card-title"><span></span>Parámetros del método</div>
+
+        <label>Tolerancia ε</label>
+        <input type="number" id="m-tol" value="0.0001" step="0.00001"/>
+
+        <label>Máximo de iteraciones</label>
+        <input type="number" id="m-maxiter" value="100" step="1"/>
+
+        <hr class="section-sep"/>
+
+        <div class="card-title"><span></span>Serie temporal de tiempos de respuesta</div>
+
+        <label>Datos CSV: versión/tiempo, tiempo_respuesta_ms (una fila por línea)</label>
+        <textarea id="m-data" placeholder="1, 120&#10;2, 135&#10;3, 118&#10;4, 200&#10;5, 95&#10;6, 210&#10;7, 88&#10;8, 180&#10;9, 102&#10;10, 190">1, 120
+2, 135
+3, 118
+4, 200
+5, 95
+6, 210
+7, 88
+8, 180
+9, 102
+10, 190</textarea>
+        <p class="input-note">Formato: versión_o_instante, tiempo_respuesta_ms</p>
+
+        <label>Grado del polinomio de ajuste</label>
+        <input type="number" id="m-degree" value="5" min="2" max="8" step="1"/>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="runMuller()">▶ Ejecutar Müller</button>
+          <button class="btn btn-secondary" onclick="loadSampleMuller()">Cargar ejemplo oscilatorio</button>
+        </div>
+      </div>
+
+      <!-- RESULTS -->
+      <div>
+        <div id="m-result-box" class="result-box">
+          <div class="result-title" id="m-result-title"></div>
+          <div class="result-body" id="m-result-body"></div>
+        </div>
+
+        <div class="grid-3" id="m-stats" style="display:none">
+          <div class="stat-card">
+            <div class="stat-label">Raíces reales</div>
+            <div class="stat-value" id="ms-real">—</div>
+            <div class="stat-sub">puntos de transición</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Raíces complejas</div>
+            <div class="stat-value purple" id="ms-complex">—</div>
+            <div class="stat-sub">oscilaciones</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Iteraciones</div>
+            <div class="stat-value orange" id="ms-iters">—</div>
+            <div class="stat-sub">hasta convergencia</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:0">
+          <div class="card-title"><span></span>Gráfica serie temporal y variación</div>
+          <div class="chart-wrap">
+            <canvas id="chart-muller"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROOTS TABLE -->
+    <div class="iter-wrap" id="m-table-wrap" style="display:none">
+      <table>
+        <thead>
+          <tr>
+            <th>Iter</th>
+            <th>x₀</th>
+            <th>x₁</th>
+            <th>x₂</th>
+            <th>x₃ (nueva raíz)</th>
+            <th>|f(x₃)|</th>
+            <th>Tipo</th>
+          </tr>
+        </thead>
+        <tbody id="m-table-body"></tbody>
+      </table>
+    </div>
+
+    <!-- ROOTS LIST -->
+    <div id="m-roots-section" style="display:none; margin-top: 20px;">
+      <div class="card">
+        <div class="card-title"><span></span>Raíces encontradas e interpretación</div>
+        <div id="m-roots-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PANEL COMPARATIVA ===================== -->
+  <div id="panel-compare" class="panel">
+
+    <div class="info-box">
+      <strong>Comparativa de métodos</strong> — Ejecuta primero Newton y Müller por separado, luego regresa aquí
+      para ver el análisis comparativo de velocidad de convergencia, número de iteraciones y tipo de raíces detectadas.
+    </div>
+
+    <div id="compare-placeholder" class="card" style="text-align:center; padding: 40px; color: var(--muted)">
+      <div style="font-size:32px; margin-bottom:12px">⚡</div>
+      <div style="font-family:'Space Mono',monospace; font-size:13px">Ejecuta ambos métodos primero</div>
+      <div style="font-size:12px; margin-top:6px">Pestaña ① Newton-Raphson y ② Müller</div>
+    </div>
+
+    <div id="compare-content" style="display:none">
+      <div class="compare-grid">
+        <div class="card">
+          <div class="method-header">
+            <div class="method-dot" style="background:var(--accent2)"></div>
+            <div class="method-name">Newton-Raphson</div>
+          </div>
+          <div id="cmp-newton"></div>
+        </div>
+        <div class="card">
+          <div class="method-header">
+            <div class="method-dot" style="background:var(--accent)"></div>
+            <div class="method-name">Müller</div>
+          </div>
+          <div id="cmp-muller"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 20px">
+        <div class="card-title"><span></span>Convergencia comparada</div>
+        <div class="chart-wrap">
+          <canvas id="chart-compare"></canvas>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 20px">
+        <div class="card-title"><span class="purple"></span>Conclusión automática</div>
+        <div id="cmp-conclusion" style="font-size:13px; line-height:1.8; color:var(--text)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PANEL TEORÍA ===================== -->
+  <div id="panel-teoria" class="panel">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title"><span class="purple"></span>Newton-Raphson — Base matemática</div>
+
+        <div class="info-box" style="border-left-color: var(--accent2)">
+          <strong>Fórmula de iteración:</strong><br>
+          xₙ₊₁ = xₙ − f(xₙ) / f'(xₙ)
+        </div>
+
+        <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:12px">
+          Dado el punto inicial x₀, el método construye la recta tangente a f en ese punto y toma su raíz como
+          siguiente aproximación. Repite hasta que |xₙ₊₁ − xₙ| / |xₙ₊₁| &lt; ε.
+        </p>
+
+        <div class="info-box" style="border-left-color: var(--accent2)">
+          <strong>Derivada numérica (diferencias centradas):</strong><br>
+          f'(xₙ) ≈ [f(xₙ+h) − f(xₙ−h)] / 2h
+        </div>
+
+        <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:12px">
+          <strong style="color:var(--text)">Convergencia:</strong> Cuadrática cuando f'(x*) ≠ 0.
+          Cada iteración duplica los dígitos correctos.
+        </p>
+
+        <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:12px">
+          <strong style="color:var(--text)">Aplicación en EquilibraDB:</strong> f(q) = T(q) − T_max, donde T(q)
+          es el tiempo de respuesta interpolado para q consultas concurrentes. La raíz q* es el punto
+          exacto de saturación de la base de datos.
+        </p>
+
+        <p style="font-size:13px; color:var(--muted); line-height:1.7">
+          <strong style="color:var(--accent)">¿Por qué Newton aquí?</strong> La curva T(q) es monótona creciente
+          y suave — tiene derivada bien definida — lo que garantiza convergencia rápida de Newton.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span></span>Müller — Base matemática</div>
+
+        <div class="info-box green">
+          <strong>Construcción de parábola:</strong><br>
+          Dados (x₀,f₀), (x₁,f₁), (x₂,f₂):<br>
+          p(x) = a(x−x₂)² + b(x−x₂) + c
+        </div>
+
+        <div class="info-box green">
+          <strong>Nueva aproximación:</strong><br>
+          x₃ = x₂ − 2c / (b ± √(b²−4ac))<br>
+          (signo que maximiza el denominador)
+        </div>
+
+        <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:12px">
+          Si b²−4ac &lt; 0, la raíz es <strong style="color:var(--accent2)">compleja</strong>.
+          Una raíz compleja en g(t) indica que la variación del tiempo de respuesta tiene
+          un comportamiento <strong style="color:var(--accent2)">oscilatorio inestable</strong>.
+        </p>
+
+        <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:12px">
+          <strong style="color:var(--text)">Convergencia:</strong> Superlineal, orden ≈ 1.84.
+          No requiere derivada analítica.
+        </p>
+
+        <p style="font-size:13px; color:var(--muted); line-height:1.7">
+          <strong style="color:var(--accent)">¿Por qué Müller aquí?</strong> La serie temporal de variaciones
+          ΔT(t) tiene picos abruptos y comportamiento irregular. Newton fallaría por derivadas nulas
+          o discontinuas. Müller es robusto ante estas irregularidades y puede detectar las oscilaciones
+          mediante raíces complejas.
+        </p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px">
+      <div class="card-title"><span class="purple"></span>Requerimientos funcionales implementados</div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px">
+        <div class="info-box green" style="margin:0">
+          <strong>RF-01</strong> Carga de datos CSV de rendimiento (consultas vs tiempo_ms)
+        </div>
+        <div class="info-box green" style="margin:0">
+          <strong>RF-02</strong> Newton-Raphson con tabla de iteraciones completa (xₙ, f(xₙ), f'(xₙ), error)
+        </div>
+        <div class="info-box green" style="margin:0">
+          <strong>RF-03</strong> Configuración de T_max (SLA) y punto inicial x₀
+        </div>
+        <div class="info-box" style="margin:0">
+          <strong>RF-04</strong> Müller sobre función de variación temporal con polinomio configurable
+        </div>
+        <div class="info-box" style="margin:0">
+          <strong>RF-05</strong> Reporte de raíces reales y complejas con interpretación de Müller
+        </div>
+        <div class="info-box" style="border-left-color:var(--accent3); margin:0">
+          <strong>RF-06</strong> Gráfica comparativa de convergencia de ambos métodos
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>EquilibraDB v1.0 — Proyecto de Aula · Métodos Numéricos · Ingeniería de Software</span>
+    <span>Newton-Raphson + Müller</span>
+  </footer>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// UTILIDADES
+// ═══════════════════════════════════════════════
+let chartNewton = null, chartMuller = null, chartCompare = null;
+let lastNewtonResult = null, lastMullerResult = null;
+
+function showTab(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  event.target.classList.add('active');
+  if (id === 'compare') buildCompare();
+}
+
+function parseCSV(raw) {
+  return raw.trim().split('\n')
+    .map(l => l.split(',').map(v => parseFloat(v.trim())))
+    .filter(r => r.length >= 2 && !isNaN(r[0]) && !isNaN(r[1]));
+}
+
+function showResult(prefix, type, title, body) {
+  const box = document.getElementById(prefix + '-result-box');
+  box.className = 'result-box show ' + type;
+  document.getElementById(prefix + '-result-title').textContent = title;
+  document.getElementById(prefix + '-result-body').innerHTML = body;
+}
+
+// ═══════════════════════════════════════════════
+// INTERPOLACIÓN LINEAL / CÚBICA sobre datos
+// ═══════════════════════════════════════════════
+function interpolate(xs, ys, x) {
+  if (x <= xs[0]) return ys[0];
+  if (x >= xs[xs.length-1]) return ys[ys.length-1];
+  for (let i = 0; i < xs.length - 1; i++) {
+    if (x >= xs[i] && x <= xs[i+1]) {
+      const t = (x - xs[i]) / (xs[i+1] - xs[i]);
+      return ys[i] + t * (ys[i+1] - ys[i]);
+    }
+  }
+  return ys[ys.length-1];
+}
+
+// ═══════════════════════════════════════════════
+// AJUSTE POLINOMIAL (mínimos cuadrados)
+// ═══════════════════════════════════════════════
+function polyFit(xs, ys, degree) {
+  const n = xs.length, m = degree + 1;
+  const A = [];
+  for (let i = 0; i < n; i++) {
+    const row = [];
+    for (let j = 0; j < m; j++) row.push(Math.pow(xs[i], j));
+    A.push(row);
+  }
+  // Normal equations: (AᵀA)c = Aᵀy
+  const AtA = [], Aty = [];
+  for (let i = 0; i < m; i++) {
+    AtA.push(new Array(m).fill(0));
+    Aty.push(0);
+  }
+  for (let k = 0; k < n; k++) {
+    for (let i = 0; i < m; i++) {
+      Aty[i] += A[k][i] * ys[k];
+      for (let j = 0; j < m; j++) AtA[i][j] += A[k][i] * A[k][j];
+    }
+  }
+  // Gaussian elimination
+  for (let col = 0; col < m; col++) {
+    let maxRow = col;
+    for (let r = col+1; r < m; r++) if (Math.abs(AtA[r][col]) > Math.abs(AtA[maxRow][col])) maxRow = r;
+    [AtA[col], AtA[maxRow]] = [AtA[maxRow], AtA[col]];
+    [Aty[col], Aty[maxRow]] = [Aty[maxRow], Aty[col]];
+    for (let r = col+1; r < m; r++) {
+      const f = AtA[r][col] / AtA[col][col];
+      for (let j = col; j < m; j++) AtA[r][j] -= f * AtA[col][j];
+      Aty[r] -= f * Aty[col];
+    }
+  }
+  const c = new Array(m).fill(0);
+  for (let i = m-1; i >= 0; i--) {
+    c[i] = Aty[i];
+    for (let j = i+1; j < m; j++) c[i] -= AtA[i][j] * c[j];
+    c[i] /= AtA[i][i];
+  }
+  return c; // c[0]+c[1]x+c[2]x²+...
+}
+
+function polyEval(c, x) {
+  let val = 0;
+  for (let i = 0; i < c.length; i++) val += c[i] * Math.pow(x, i);
+  return val;
+}
+
+// ═══════════════════════════════════════════════
+// NEWTON-RAPHSON
+// ═══════════════════════════════════════════════
+function runNewton() {
+  const x0    = parseFloat(document.getElementById('n-x0').value);
+  const tol   = parseFloat(document.getElementById('n-tol').value);
+  const maxIt = parseInt(document.getElementById('n-maxiter').value);
+  const h     = parseFloat(document.getElementById('n-h').value);
+  const Tmax  = parseFloat(document.getElementById('n-tmax').value);
+  const raw   = document.getElementById('n-data').value;
+
+  const data = parseCSV(raw);
+  if (data.length < 2) { showResult('n','error','Error de datos','Ingresa al menos 2 filas en formato: consultas, tiempo_ms'); return; }
+
+  const xs = data.map(r => r[0]);
+  const ys = data.map(r => r[1]);
+
+  // f(q) = T(q) - Tmax
+  const f = q => interpolate(xs, ys, q) - Tmax;
+
+  const iters = [];
+  let x = x0;
+  let converged = false;
+
+  for (let i = 1; i <= maxIt; i++) {
+    const fx  = f(x);
+    const fpx = (f(x + h) - f(x - h)) / (2 * h);
+
+    if (Math.abs(fpx) < 1e-14) {
+      showResult('n','error','Derivada cero','f\'(x) ≈ 0 en la iteración ' + i + '. Cambia el punto inicial x₀.');
+      return;
+    }
+
+    const xnew = x - fx / fpx;
+    const err  = i === 1 ? 1 : Math.abs((xnew - x) / xnew);
+
+    iters.push({ n: i, x: x, fx, fpx, xnew, err });
+
+    x = xnew;
+
+    if (err < tol && i > 1) { converged = true; break; }
+  }
+
+  lastNewtonResult = { converged, root: x, iters, Tmax, xs, ys };
+
+  // stats
+  const last = iters[iters.length-1];
+  document.getElementById('ns-root').textContent  = x.toFixed(2);
+  document.getElementById('ns-iters').textContent = iters.length;
+  document.getElementById('ns-err').textContent   = last.err.toExponential(2);
+  document.getElementById('n-stats').style.display = 'grid';
+
+  if (converged) {
+    showResult('n','success','✓ Convergencia alcanzada',
+      `El punto de saturación de la base de datos es <strong>q* ≈ ${x.toFixed(2)} consultas concurrentes</strong>.<br>
+       Con más de ${Math.ceil(x)} usuarios simultáneos, el tiempo de respuesta supera los ${Tmax} ms (SLA definido).<br>
+       Convergió en <strong>${iters.length} iteraciones</strong> con error ${last.err.toExponential(3)}.`);
+  } else {
+    showResult('n','warning','⚠ No convergió',
+      `El método no convergió en ${maxIt} iteraciones. Raíz aproximada: q ≈ ${x.toFixed(2)}. Intenta cambiar x₀ o aumentar el máximo de iteraciones.`);
+  }
+
+  // tabla
+  const tbody = document.getElementById('n-table-body');
+  tbody.innerHTML = '';
+  iters.forEach((it, idx) => {
+    const tr = document.createElement('tr');
+    if (idx === iters.length-1 && converged) tr.className = 'converge';
+    tr.innerHTML = `
+      <td>${it.n}</td>
+      <td>${it.x.toFixed(6)}</td>
+      <td>${it.fx.toFixed(6)}</td>
+      <td>${it.fpx.toFixed(6)}</td>
+      <td>${it.xnew.toFixed(6)}</td>
+      <td>${it.err.toExponential(4)}</td>
+      <td>${idx === iters.length-1 && converged ? '✓ Convergió' : 'Iterando...'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('n-table-wrap').style.display = 'block';
+
+  // chart
+  renderChartNewton(xs, ys, Tmax, x, iters);
+}
+
+function renderChartNewton(xs, ys, Tmax, root, iters) {
+  const ctx = document.getElementById('chart-newton').getContext('2d');
+  if (chartNewton) chartNewton.destroy();
+
+  // Build f(q) curve
+  const qMin = Math.max(1, xs[0] - 5);
+  const qMax = xs[xs.length-1] + 10;
+  const pts = 80;
+  const qArr = [], fArr = [];
+  for (let i = 0; i <= pts; i++) {
+    const q = qMin + (qMax - qMin) * i / pts;
+    qArr.push(q.toFixed(1));
+    fArr.push(interpolate(xs, ys, q) - Tmax);
+  }
+
+  const rootPts = iters.map(it => ({ x: it.xnew.toFixed(2), y: 0 }));
+
+  chartNewton = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: qArr,
+      datasets: [
+        {
+          label: 'f(q) = T(q) − T_max',
+          data: fArr,
+          borderColor: '#7c6cfa',
+          backgroundColor: 'rgba(124,108,250,0.08)',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: true,
+        },
+        {
+          label: 'f(q) = 0 (umbral)',
+          data: qArr.map(() => 0),
+          borderColor: 'rgba(255,255,255,0.15)',
+          borderWidth: 1,
+          borderDash: [6,4],
+          pointRadius: 0,
+        },
+        {
+          label: `q* ≈ ${root.toFixed(2)}`,
+          data: [{ x: root.toFixed(2), y: 0 }],
+          borderColor: '#00e5a0',
+          backgroundColor: '#00e5a0',
+          pointRadius: 8,
+          pointStyle: 'star',
+          showLine: false,
+          type: 'scatter',
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { family: 'Space Mono', size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#64748b', maxTicksLimit: 8 }, grid: { color: 'rgba(30,45,69,0.5)' } },
+        y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(30,45,69,0.5)' } }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════
+// MÜLLER
+// ═══════════════════════════════════════════════
+function complexSqrt(re, im) {
+  const r = Math.sqrt(re*re + im*im);
+  const sqrtR = Math.sqrt(r);
+  const theta = Math.atan2(im, re) / 2;
+  return { re: sqrtR * Math.cos(theta), im: sqrtR * Math.sin(theta) };
+}
+
+function runMuller() {
+  const tol    = parseFloat(document.getElementById('m-tol').value);
+  const maxIt  = parseInt(document.getElementById('m-maxiter').value);
+  const degree = parseInt(document.getElementById('m-degree').value);
+  const raw    = document.getElementById('m-data').value;
+
+  const data = parseCSV(raw);
+  if (data.length < 4) { showResult('m','error','Error de datos','Ingresa al menos 4 filas en formato: versión, tiempo_ms'); return; }
+
+  const ts = data.map(r => r[0]);
+  const vs = data.map(r => r[1]);
+
+  // Compute variation g(t) = deltaT
+  const gts = ts.slice(1);
+  const gvs = vs.slice(1).map((v,i) => v - vs[i]);
+
+  // Fit polynomial to g(t)
+  const coeffs = polyFit(gts, gvs, Math.min(degree, gts.length-1));
+  const g = t => polyEval(coeffs, t);
+
+  // Müller iterations
+  const iters = [];
+  const roots = [];
+  let x0 = gts[0], x1 = (gts[0]+gts[1])/2, x2 = gts[1];
+  let converged = false;
+
+  for (let i = 1; i <= maxIt; i++) {
+    const f0 = g(x0), f1 = g(x1), f2 = g(x2);
+    const h0 = x1 - x0, h1 = x2 - x1;
+    const d0 = (f1 - f0) / h0, d1 = (f2 - f1) / h1;
+    const a = (d1 - d0) / (h1 + h0);
+    const b = a * h1 + d1;
+    const c = f2;
+
+    // discriminant
+    const discR = b*b - 4*a*c;
+    let x3re, x3im, isComplex = false;
+
+    if (Math.abs(a) < 1e-14) {
+      // degenerate: linear
+      x3re = x2 - c / b;
+      x3im = 0;
+    } else if (discR >= 0) {
+      const sqrtD = Math.sqrt(discR);
+      const denom1 = b + sqrtD, denom2 = b - sqrtD;
+      const denom = Math.abs(denom1) >= Math.abs(denom2) ? denom1 : denom2;
+      x3re = x2 - (2*c) / denom;
+      x3im = 0;
+    } else {
+      // complex root
+      isComplex = true;
+      const sq = complexSqrt(discR, 0); // sqrt of negative = purely imaginary
+      const sqRe = 0, sqIm = Math.sqrt(-discR);
+      // denom options: (b + i*sqIm) vs (b - i*sqIm), pick larger magnitude (same)
+      const denomRe = b, denomIm = sqIm;
+      const denomMag2 = denomRe*denomRe + denomIm*denomIm;
+      const numRe = -2*c*denomRe, numIm = -2*c*(-denomIm);
+      x3re = x2 + numRe/denomMag2;
+      x3im = numIm/denomMag2;
+    }
+
+    const fx3 = Math.abs(g(x3re));
+    const err = Math.abs(x3re - x2) / (Math.abs(x3re) + 1e-14);
+
+    iters.push({ n: i, x0, x1, x2, x3re, x3im, isComplex, fx3, err });
+
+    if (isComplex) {
+      roots.push({ re: x3re, im: x3im, isComplex: true });
+    } else if (fx3 < 0.5) { // threshold for "found root"
+      roots.push({ re: x3re, im: 0, isComplex: false });
+    }
+
+    x0 = x1; x1 = x2; x2 = x3re;
+
+    if (err < tol) { converged = true; break; }
+  }
+
+  // Deduplicate roots approximately
+  const uniqueRoots = [];
+  roots.forEach(r => {
+    if (!uniqueRoots.some(u => Math.abs(u.re - r.re) < 0.5 && u.isComplex === r.isComplex)) {
+      uniqueRoots.push(r);
+    }
+  });
+
+  lastMullerResult = { converged, iters, roots: uniqueRoots, ts, vs, gts, gvs, coeffs };
+
+  const realRoots    = uniqueRoots.filter(r => !r.isComplex);
+  const complexRoots = uniqueRoots.filter(r =>  r.isComplex);
+
+  document.getElementById('ms-real').textContent    = realRoots.length;
+  document.getElementById('ms-complex').textContent = complexRoots.length;
+  document.getElementById('ms-iters').textContent   = iters.length;
+  document.getElementById('m-stats').style.display  = 'grid';
+
+  const status = complexRoots.length > 0 ? 'warning' : 'success';
+  const statusIcon = complexRoots.length > 0 ? '⚠' : '✓';
+  showResult('m', status, `${statusIcon} Análisis completado`,
+    `Se encontraron <strong>${realRoots.length}</strong> raíces reales (puntos de transición estable/inestable) 
+     y <strong>${complexRoots.length}</strong> raíces complejas (oscilaciones inestables detectadas).<br>
+     ${complexRoots.length > 0
+       ? '⚠ Las raíces complejas indican que el sistema tiene <strong>oscilaciones periódicas</strong> en el tiempo de respuesta. Revisar configuración del pool de conexiones.'
+       : '✓ No se detectan oscilaciones inestables significativas en este rango.'}`);
+
+  // tabla iteraciones
+  const tbody = document.getElementById('m-table-body');
+  tbody.innerHTML = '';
+  iters.forEach(it => {
+    const tr = document.createElement('tr');
+    const rootStr = it.isComplex
+      ? `<span class="complex-root">${it.x3re.toFixed(4)} + ${it.x3im.toFixed(4)}i</span>`
+      : `<span class="real-root">${it.x3re.toFixed(6)}</span>`;
+    tr.innerHTML = `
+      <td>${it.n}</td>
+      <td>${it.x0.toFixed(4)}</td>
+      <td>${it.x1.toFixed(4)}</td>
+      <td>${it.x2.toFixed(4)}</td>
+      <td>${rootStr}</td>
+      <td>${it.fx3.toFixed(6)}</td>
+      <td>${it.isComplex ? '<span class="complex-root">Compleja</span>' : '<span class="real-root">Real</span>'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('m-table-wrap').style.display = 'block';
+
+  // roots list
+  const rootsDiv = document.getElementById('m-roots-list');
+  rootsDiv.innerHTML = '';
+  if (uniqueRoots.length === 0) {
+    rootsDiv.innerHTML = '<p style="color:var(--muted);font-size:13px">No se encontraron raíces significativas en el rango de datos.</p>';
+  } else {
+    uniqueRoots.forEach((r, i) => {
+      const div = document.createElement('div');
+      div.className = 'info-box ' + (r.isComplex ? '' : 'green');
+      div.style.marginBottom = '10px';
+      if (r.isComplex) {
+        div.innerHTML = `<strong>Raíz ${i+1} — Compleja:</strong> t = ${r.re.toFixed(4)} + ${r.im.toFixed(4)}i<br>
+          <span style="font-size:12px">Indica una <strong>oscilación</strong> con frecuencia proporcional a |Im| = ${Math.abs(r.im).toFixed(4)}.
+          El sistema presenta comportamiento cíclico de inestabilidad en este punto del historial.</span>`;
+      } else {
+        div.innerHTML = `<strong>Raíz ${i+1} — Real:</strong> t* ≈ ${r.re.toFixed(4)}<br>
+          <span style="font-size:12px">Punto de transición donde la variación del tiempo de respuesta cruza cero.
+          Puede indicar el inicio de una mejora o degradación estable del rendimiento.</span>`;
+      }
+      rootsDiv.appendChild(div);
+    });
+  }
+  document.getElementById('m-roots-section').style.display = 'block';
+
+  renderChartMuller(ts, vs, gts, gvs, coeffs, uniqueRoots);
+}
+
+function renderChartMuller(ts, vs, gts, gvs, coeffs, roots) {
+  const ctx = document.getElementById('chart-muller').getContext('2d');
+  if (chartMuller) chartMuller.destroy();
+
+  const tMin = gts[0] - 0.5, tMax = gts[gts.length-1] + 0.5;
+  const curveT = [], curveG = [];
+  for (let i = 0; i <= 100; i++) {
+    const t = tMin + (tMax - tMin) * i / 100;
+    curveT.push(t.toFixed(2));
+    curveG.push(polyEval(coeffs, t));
+  }
+
+  const realRootPts = roots.filter(r => !r.isComplex).map(r => ({ x: r.re.toFixed(3), y: 0 }));
+
+  chartMuller = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: curveT,
+      datasets: [
+        {
+          label: 'T(t) — Tiempo respuesta original',
+          data: ts.map((t,i) => ({ x: String(t), y: vs[i] })),
+          borderColor: '#f97316',
+          backgroundColor: 'rgba(249,115,22,0.08)',
+          borderWidth: 2,
+          pointRadius: 4,
+          tension: 0.3,
+          yAxisID: 'y1',
+          type: 'line',
+        },
+        {
+          label: 'g(t) = ΔT(t) — Variación (polinomio)',
+          data: curveG,
+          borderColor: '#00e5a0',
+          backgroundColor: 'rgba(0,229,160,0.06)',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'y',
+        },
+        {
+          label: 'g(t) = 0',
+          data: curveT.map(() => 0),
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          pointRadius: 0,
+          borderDash: [5,5],
+          yAxisID: 'y',
+        },
+        ...(realRootPts.length > 0 ? [{
+          label: 'Raíces reales',
+          data: realRootPts,
+          borderColor: '#00e5a0',
+          backgroundColor: '#00e5a0',
+          pointRadius: 7,
+          pointStyle: 'circle',
+          showLine: false,
+          type: 'scatter',
+          yAxisID: 'y',
+        }] : [])
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { family: 'Space Mono', size: 10 } } } },
+      scales: {
+        x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(30,45,69,0.5)' } },
+        y:  { ticks: { color: '#64748b' }, grid: { color: 'rgba(30,45,69,0.5)' }, title: { display: true, text: 'ΔT(t)', color: '#64748b' } },
+        y1: { position: 'right', ticks: { color: '#f97316' }, grid: { display: false }, title: { display: true, text: 'T(t) ms', color: '#f97316' } }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════
+// COMPARATIVA
+// ═══════════════════════════════════════════════
+function buildCompare() {
+  if (!lastNewtonResult && !lastMullerResult) return;
+
+  document.getElementById('compare-placeholder').style.display = 'none';
+  document.getElementById('compare-content').style.display    = 'block';
+
+  // Newton summary
+  const nd = document.getElementById('cmp-newton');
+  if (lastNewtonResult) {
+    const r = lastNewtonResult;
+    nd.innerHTML = `
+      <div class="stat-card" style="margin-bottom:10px">
+        <div class="stat-label">Punto de saturación q*</div>
+        <div class="stat-value purple">${r.root.toFixed(2)}</div>
+        <div class="stat-sub">consultas concurrentes · T_max = ${r.Tmax} ms</div>
+      </div>
+      <div class="progress-row">
+        <span class="progress-label">Iteraciones</span>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${Math.min(100, r.iters.length*10)}%; background:var(--accent2)"></div></div>
+        <span class="progress-val">${r.iters.length}</span>
+      </div>
+      <div class="progress-row">
+        <span class="progress-label">Error final</span>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${Math.min(100,100-Math.log10(r.iters[r.iters.length-1].err+1e-15)*(-10))}%; background:var(--accent2)"></div></div>
+        <span class="progress-val">${r.iters[r.iters.length-1].err.toExponential(1)}</span>
+      </div>
+      <div class="info-box" style="margin-top:12px; border-left-color:var(--accent2)">
+        <strong>Convergencia:</strong> Cuadrática — ideal para f(q) suave y monótona (curva de saturación de DB).
+      </div>`;
+  } else {
+    nd.innerHTML = '<p style="color:var(--muted);font-size:13px">Ejecuta Newton primero.</p>';
+  }
+
+  // Müller summary
+  const md = document.getElementById('cmp-muller');
+  if (lastMullerResult) {
+    const r = lastMullerResult;
+    const realC    = r.roots.filter(x => !x.isComplex).length;
+    const complexC = r.roots.filter(x =>  x.isComplex).length;
+    md.innerHTML = `
+      <div class="stat-card" style="margin-bottom:10px">
+        <div class="stat-label">Raíces encontradas</div>
+        <div class="stat-value">${realC} reales · <span style="color:var(--accent2)">${complexC} complejas</span></div>
+        <div class="stat-sub">en g(t) = ΔT(t)</div>
+      </div>
+      <div class="progress-row">
+        <span class="progress-label">Iteraciones</span>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${Math.min(100, r.iters.length*5)}%; background:var(--accent)"></div></div>
+        <span class="progress-val">${r.iters.length}</span>
+      </div>
+      <div class="progress-row">
+        <span class="progress-label">Raíces complejas</span>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${complexC > 0 ? 70 : 5}%; background:${complexC>0?'var(--accent2)':'var(--accent)'}"></div></div>
+        <span class="progress-val">${complexC > 0 ? 'SÍ' : 'NO'}</span>
+      </div>
+      <div class="info-box green" style="margin-top:12px">
+        <strong>Convergencia:</strong> Superlineal (orden ≈ 1.84) — robusto ante funciones irregulares y raíces complejas.
+      </div>`;
+  } else {
+    md.innerHTML = '<p style="color:var(--muted);font-size:13px">Ejecuta Müller primero.</p>';
+  }
+
+  // Convergence chart
+  if (lastNewtonResult && lastMullerResult) {
+    const ctx = document.getElementById('chart-compare').getContext('2d');
+    if (chartCompare) chartCompare.destroy();
+
+    const nErrs = lastNewtonResult.iters.map((it,i) => ({ x: i+1, y: Math.log10(it.err + 1e-15) }));
+    const mErrs = lastMullerResult.iters.map((it,i) => ({ x: i+1, y: Math.log10(it.err + 1e-15) }));
+
+    chartCompare = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [
+          {
+            label: 'Newton — log₁₀(error)',
+            data: nErrs,
+            borderColor: '#7c6cfa',
+            backgroundColor: 'rgba(124,108,250,0.1)',
+            borderWidth: 2,
+            pointRadius: 4,
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: 'Müller — log₁₀(error)',
+            data: mErrs,
+            borderColor: '#00e5a0',
+            backgroundColor: 'rgba(0,229,160,0.06)',
+            borderWidth: 2,
+            pointRadius: 4,
+            tension: 0.3,
+            fill: true,
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#94a3b8', font: { family: 'Space Mono', size: 11 } } } },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: 'Iteración', color: '#64748b' }, ticks: { color: '#64748b' }, grid: { color: 'rgba(30,45,69,0.5)' } },
+          y: { title: { display: true, text: 'log₁₀(error relativo)', color: '#64748b' }, ticks: { color: '#64748b' }, grid: { color: 'rgba(30,45,69,0.5)' } }
+        }
+      }
+    });
+
+    // Conclusion
+    const ni = lastNewtonResult.iters.length;
+    const mi = lastMullerResult.iters.length;
+    const faster = ni <= mi ? 'Newton-Raphson' : 'Müller';
+    const complexCount = lastMullerResult.roots.filter(r => r.isComplex).length;
+
+    document.getElementById('cmp-conclusion').innerHTML = `
+      <strong style="color:var(--accent)">Velocidad de convergencia:</strong>
+      ${faster} convergió más rápido (${Math.min(ni,mi)} vs ${Math.max(ni,mi)} iteraciones).
+      Newton es más rápido cuando la función es suave — esto confirma que la curva de saturación T(q) tiene buenas condiciones para Newton.<br><br>
+      <strong style="color:var(--accent2)">Raíces complejas:</strong>
+      ${complexCount > 0
+        ? `Müller detectó <strong>${complexCount}</strong> raíces complejas en la serie temporal, lo que Newton-Raphson nunca podría encontrar por operar solo en ℝ.
+           Esto justifica el uso de Müller para el análisis de oscilaciones inestables.`
+        : 'No se detectaron raíces complejas en los datos actuales, lo que indica estabilidad en la variación del tiempo de respuesta.'}<br><br>
+      <strong style="color:var(--accent3)">Conclusión de diseño:</strong>
+      Ambos métodos son complementarios. Newton es óptimo para encontrar el punto de saturación (función suave, derivable).
+      Müller es imprescindible para analizar la variabilidad temporal (función irregular, posibles raíces complejas).
+      Usar solo uno de los dos métodos dejaría un aspecto del análisis sin cubrir.`;
+  }
+}
+
+// ═══════════════════════════════════════════════
+// DATOS DE EJEMPLO
+// ═══════════════════════════════════════════════
+function loadSampleNewton() {
+  document.getElementById('n-data').value =
+`5, 22
+10, 35
+20, 58
+30, 82
+40, 115
+50, 162
+55, 192
+60, 228
+65, 278
+70, 345
+80, 510
+90, 780
+100, 1200`;
+  document.getElementById('n-tmax').value  = 200;
+  document.getElementById('n-x0').value   = 40;
+}
+
+function loadSampleMuller() {
+  document.getElementById('m-data').value =
+`1, 110
+2, 145
+3, 98
+4, 220
+5, 85
+6, 235
+7, 78
+8, 245
+9, 82
+10, 230
+11, 90
+12, 218
+13, 95
+14, 200`;
+  document.getElementById('m-degree').value = 6;
+}
+</script>
+</body>
+</html>
